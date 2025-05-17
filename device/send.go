@@ -6,7 +6,6 @@
 package device
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
@@ -157,10 +156,8 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 		sendBuffer = append(sendBuffer, buf)
 	}
 
-	var buf [MessageInitiationSize]byte
-	writer := bytes.NewBuffer(buf[:0])
-	binary.Write(writer, binary.LittleEndian, msg)
-	packet := writer.Bytes()
+	packet := make([]byte, MessageInitiationSize)
+	_ = msg.marshal(packet)
 	peer.cookieGenerator.AddMacs(packet)
 
 	peer.timersAnyAuthenticatedPacketTraversal()
@@ -199,11 +196,8 @@ func (peer *Peer) SendHandshakeResponse() error {
 		return err
 	}
 
-	var buf [MessageResponseSize]byte
-	writer := bytes.NewBuffer(buf[:0])
-
-	binary.Write(writer, binary.LittleEndian, response)
-	packet := writer.Bytes()
+	packet := make([]byte, MessageResponseSize)
+	_ = response.marshal(packet)
 	peer.cookieGenerator.AddMacs(packet)
 
 	err = peer.BeginSymmetricSession()
@@ -250,11 +244,8 @@ func (device *Device) SendHandshakeCookie(initiatingElem *QueueHandshakeElement)
 		return err
 	}
 
-	var buf [MessageCookieReplySize]byte
-	writer := bytes.NewBuffer(buf[:0])
-	binary.Write(writer, binary.LittleEndian, reply)
-	packet := writer.Bytes()
-
+	packet := make([]byte, MessageCookieReplySize)
+	_ = reply.marshal(packet)
 	if padding := device.paddings.cookie; padding > 0 {
 		buf := make([]byte, padding+len(packet))
 		if _, err := rand.Read(buf[:padding]); err != nil {
