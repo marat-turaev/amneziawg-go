@@ -10,6 +10,7 @@ type obfBuilder func(val string) (obf, error)
 
 var obfBuilders = map[string]obfBuilder{
 	"b":  newBytesObf,
+	"c":  newCounterObf,
 	"t":  newTimestampObf,
 	"r":  newRandObf,
 	"rc": newRandCharObf,
@@ -96,6 +97,9 @@ func (c *obfChain) Obfuscate(dst, src []byte) {
 	written := 0
 	for _, o := range c.obfs {
 		obfLen := o.ObfuscatedLen(len(src))
+		if obfLen < 0 || written+obfLen > len(dst) {
+			return
+		}
 		o.Obfuscate(dst[written:written+obfLen], src)
 		written += obfLen
 	}
@@ -103,12 +107,18 @@ func (c *obfChain) Obfuscate(dst, src []byte) {
 
 func (c *obfChain) Deobfuscate(dst, src []byte) bool {
 	dynamicLen := len(src) - c.ObfuscatedLen(0)
+	if dynamicLen < 0 {
+		return false
+	}
 
 	written, read := 0, 0
 
 	for _, o := range c.obfs {
 		deobfLen := o.DeobfuscatedLen(dynamicLen)
 		obfLen := o.ObfuscatedLen(deobfLen)
+		if deobfLen < 0 || obfLen < 0 || written+deobfLen > len(dst) || read+obfLen > len(src) {
+			return false
+		}
 
 		if !o.Deobfuscate(dst[written:written+deobfLen], src[read:read+obfLen]) {
 			return false

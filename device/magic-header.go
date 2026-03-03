@@ -57,7 +57,15 @@ func (h *magicHeader) Validate(val uint32) bool {
 }
 
 func (h *magicHeader) Generate() uint32 {
-	high := int64(h.end - h.start + 1)
-	r, _ := rand.Int(rand.Reader, big.NewInt(high))
-	return h.start + uint32(r.Int64())
+	if h.start == h.end {
+		return h.start
+	}
+
+	high := uint64(h.end) - uint64(h.start) + 1
+	limit := new(big.Int).SetUint64(high)
+	r, err := rand.Int(rand.Reader, limit)
+	if err != nil {
+		return h.start
+	}
+	return h.start + uint32(r.Uint64())
 }

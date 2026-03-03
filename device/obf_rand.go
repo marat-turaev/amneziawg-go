@@ -2,6 +2,7 @@ package device
 
 import (
 	"crypto/rand"
+	"errors"
 	"strconv"
 )
 
@@ -9,6 +10,9 @@ func newRandObf(val string) (obf, error) {
 	length, err := strconv.Atoi(val)
 	if err != nil {
 		return nil, err
+	}
+	if length < 0 {
+		return nil, errors.New("length must be non-negative")
 	}
 
 	return &randObf{
@@ -21,7 +25,10 @@ type randObf struct {
 }
 
 func (o *randObf) Obfuscate(dst, src []byte) {
-	rand.Read(dst[:o.length])
+	if o.length > len(dst) {
+		return
+	}
+	_, _ = rand.Read(dst[:o.length])
 }
 
 func (o *randObf) Deobfuscate(dst, src []byte) bool {

@@ -1,11 +1,17 @@
 package device
 
-import "strconv"
+import (
+	"errors"
+	"strconv"
+)
 
 func newDataSizeObf(val string) (obf, error) {
 	length, err := strconv.Atoi(val)
 	if err != nil {
 		return nil, err
+	}
+	if length < 0 {
+		return nil, errors.New("length must be non-negative")
 	}
 
 	return &dataSizeObf{
@@ -18,6 +24,9 @@ type dataSizeObf struct {
 }
 
 func (o *dataSizeObf) Obfuscate(dst, src []byte) {
+	if o.length > len(dst) {
+		return
+	}
 	srcLen := len(src)
 	for i := o.length - 1; i >= 0; i-- {
 		dst[i] = byte(srcLen & 0xFF)

@@ -237,7 +237,7 @@ func (device *Device) IpcSetOperation(r io.Reader) (err error) {
 
 		var err error
 		if deviceConfig {
-			err = device.handleDeviceLine(key, value)
+			err = device.handleDeviceLine(ipcDev, key, value)
 		} else {
 			err = device.handlePeerLine(peer, key, value)
 		}
@@ -257,7 +257,17 @@ func (device *Device) IpcSetOperation(r io.Reader) (err error) {
 	return nil
 }
 
-func (device *Device) handleDeviceLine(key, value string) error {
+func validateJunkParams(count, min, max int) error {
+	if count < 0 || min < 0 || max < 0 {
+		return errors.New("junk values must be non-negative")
+	}
+	if count > 0 && max < min {
+		return errors.New("jmax must be greater than or equal to jmin")
+	}
+	return nil
+}
+
+func (device *Device) handleDeviceLine(ipcDev *ipcSetDevice, key, value string) error {
 	switch key {
 	case "private_key":
 		var sk NoisePrivateKey
@@ -315,6 +325,9 @@ func (device *Device) handleDeviceLine(key, value string) error {
 		if jc <= 0 {
 			return ipcErrorf(ipc.IpcErrorInvalid, "jc must be a positive value")
 		}
+		if err := validateJunkParams(jc, device.junk.min, device.junk.max); err != nil {
+			return ipcErrorf(ipc.IpcErrorInvalid, "invalid junk settings: %w", err)
+		}
 		device.log.Verbosef("UAPI: Updating junk count")
 		device.junk.count = jc
 
@@ -326,6 +339,9 @@ func (device *Device) handleDeviceLine(key, value string) error {
 		if jmin <= 0 {
 			return ipcErrorf(ipc.IpcErrorInvalid, "jmin must be a positive value")
 		}
+		if err := validateJunkParams(device.junk.count, jmin, device.junk.max); err != nil {
+			return ipcErrorf(ipc.IpcErrorInvalid, "invalid junk settings: %w", err)
+		}
 		device.log.Verbosef("UAPI: Updating junk min")
 		device.junk.min = jmin
 
@@ -336,6 +352,9 @@ func (device *Device) handleDeviceLine(key, value string) error {
 		}
 		if jmax <= 0 {
 			return ipcErrorf(ipc.IpcErrorInvalid, "jmax must be a positive value")
+		}
+		if err := validateJunkParams(device.junk.count, device.junk.min, jmax); err != nil {
+			return ipcErrorf(ipc.IpcErrorInvalid, "invalid junk settings: %w", err)
 		}
 		device.log.Verbosef("UAPI: Updating junk max")
 		device.junk.max = jmax
@@ -389,28 +408,28 @@ func (device *Device) handleDeviceLine(key, value string) error {
 		if err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to parse H1: %w", err)
 		}
-		device.headers.init = header
+		ipcDev.headers.init = header
 
 	case "h2":
 		header, err := newMagicHeader(value)
 		if err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to parse H2: %w", err)
 		}
-		device.headers.response = header
+		ipcDev.headers.response = header
 
 	case "h3":
 		header, err := newMagicHeader(value)
 		if err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to parse H3: %w", err)
 		}
-		device.headers.cookie = header
+		ipcDev.headers.cookie = header
 
 	case "h4":
 		header, err := newMagicHeader(value)
 		if err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to parse H4: %w", err)
 		}
-		device.headers.transport = header
+		ipcDev.headers.transport = header
 
 	case "i1":
 		chain, err := newObfChain(value)

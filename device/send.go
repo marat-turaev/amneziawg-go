@@ -139,13 +139,21 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 	jc := peer.device.junk.count
 	jmin := peer.device.junk.min
 	jmax := peer.device.junk.max
+	if jc > 0 && jmax < jmin {
+		return errors.New("invalid junk settings: jmax is less than jmin")
+	}
 
 	for i := 0; i < jc; i++ {
-		nBig, _ := rand.Int(rand.Reader, big.NewInt(int64(jmax-jmin+1)))
+		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(jmax-jmin+1)))
+		if err != nil {
+			return err
+		}
 		n := int(nBig.Int64()) + jmin
 
 		buf := make([]byte, n)
-		rand.Read(buf)
+		if _, err := rand.Read(buf); err != nil {
+			return err
+		}
 		sendBuffer = append(sendBuffer, buf)
 	}
 
@@ -160,7 +168,9 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 
 	if padding := peer.device.paddings.init; padding > 0 {
 		buf := make([]byte, padding+len(packet))
-		rand.Read(buf[:padding])
+		if _, err := rand.Read(buf[:padding]); err != nil {
+			return err
+		}
 		copy(buf[padding:], packet)
 		packet = buf
 	}
@@ -208,7 +218,9 @@ func (peer *Peer) SendHandshakeResponse() error {
 
 	if padding := peer.device.paddings.response; padding > 0 {
 		buf := make([]byte, padding+len(packet))
-		rand.Read(buf[:padding])
+		if _, err := rand.Read(buf[:padding]); err != nil {
+			return err
+		}
 		copy(buf[padding:], packet)
 		packet = buf
 	}
@@ -245,7 +257,9 @@ func (device *Device) SendHandshakeCookie(initiatingElem *QueueHandshakeElement)
 
 	if padding := device.paddings.cookie; padding > 0 {
 		buf := make([]byte, padding+len(packet))
-		rand.Read(buf[:padding])
+		if _, err := rand.Read(buf[:padding]); err != nil {
+			return err
+		}
 		copy(buf[padding:], packet)
 		packet = buf
 	}
@@ -581,7 +595,10 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 					for i := len(elem.packet) - 1; i >= 0; i-- {
 						elem.buffer[i+padding] = elem.buffer[i]
 					}
-					rand.Read(elem.buffer[:padding])
+					if _, err := rand.Read(elem.buffer[:padding]); err != nil {
+						clear(elem.buffer[:padding])
+						device.log.Errorf("Failed to create transport padding: %v", err)
+					}
 					elem.packet = elem.buffer[:padding+len(elem.packet)]
 				}
 			}
