@@ -261,7 +261,9 @@ func validateJunkParams(count, min, max int) error {
 	if count < 0 || min < 0 || max < 0 {
 		return errors.New("junk values must be non-negative")
 	}
-	if count > 0 && max < min {
+	// Allow setting jc/jmin/jmax in any order during IPC parsing.
+	// Enforce ordering only when both bounds are provided.
+	if count > 0 && min > 0 && max > 0 && max < min {
 		return errors.New("jmax must be greater than or equal to jmin")
 	}
 	return nil
