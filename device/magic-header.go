@@ -2,9 +2,9 @@ package device
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"math/big"
 	"strconv"
 	"strings"
 )
@@ -61,11 +61,26 @@ func (h *magicHeader) Generate() uint32 {
 		return h.start
 	}
 
-	high := uint64(h.end) - uint64(h.start) + 1
-	limit := new(big.Int).SetUint64(high)
-	r, err := rand.Int(rand.Reader, limit)
-	if err != nil {
-		return h.start
+	width := uint64(h.end) - uint64(h.start) + 1
+	if width >= 1<<32 {
+		var buf [4]byte
+		if _, err := rand.Read(buf[:]); err != nil {
+			return h.start
+		}
+		return binary.BigEndian.Uint32(buf[:])
 	}
-	return h.start + uint32(r.Uint64())
+
+	limit := uint32(width)
+	cutoff := ^uint32(0) - (^uint32(0) % limit)
+	var buf [4]byte
+
+	for {
+		if _, err := rand.Read(buf[:]); err != nil {
+			return h.start
+		}
+		n := binary.BigEndian.Uint32(buf[:])
+		if n < cutoff {
+			return h.start + (n % limit)
+		}
+	}
 }
