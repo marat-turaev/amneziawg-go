@@ -97,51 +97,53 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
 			sendf("fwmark=%d", device.net.fwmark)
 		}
 
-		if device.junk.count != 0 {
-			sendf("jc=%d", device.junk.count)
+		aSec := device.advancedSecuritySnapshot()
+
+		if aSec.junk.count != 0 {
+			sendf("jc=%d", aSec.junk.count)
 		}
 
-		if device.junk.min != 0 {
-			sendf("jmin=%d", device.junk.min)
+		if aSec.junk.min != 0 {
+			sendf("jmin=%d", aSec.junk.min)
 		}
 
-		if device.junk.max != 0 {
-			sendf("jmax=%d", device.junk.max)
+		if aSec.junk.max != 0 {
+			sendf("jmax=%d", aSec.junk.max)
 		}
 
-		if device.paddings.init != 0 {
-			sendf("s1=%d", device.paddings.init)
+		if aSec.paddings.init != 0 {
+			sendf("s1=%d", aSec.paddings.init)
 		}
 
-		if device.paddings.response != 0 {
-			sendf("s2=%d", device.paddings.response)
+		if aSec.paddings.response != 0 {
+			sendf("s2=%d", aSec.paddings.response)
 		}
 
-		if device.paddings.cookie != 0 {
-			sendf("s3=%d", device.paddings.cookie)
+		if aSec.paddings.cookie != 0 {
+			sendf("s3=%d", aSec.paddings.cookie)
 		}
 
-		if device.paddings.transport != 0 {
-			sendf("s4=%d", device.paddings.transport)
+		if aSec.paddings.transport != 0 {
+			sendf("s4=%d", aSec.paddings.transport)
 		}
 
-		if device.headers.init != nil {
-			sendf("h1=%s", device.headers.init.GenSpec())
+		if aSec.headers.init != nil {
+			sendf("h1=%s", aSec.headers.init.GenSpec())
 		}
 
-		if device.headers.response != nil {
-			sendf("h2=%s", device.headers.response.GenSpec())
+		if aSec.headers.response != nil {
+			sendf("h2=%s", aSec.headers.response.GenSpec())
 		}
 
-		if device.headers.cookie != nil {
-			sendf("h3=%s", device.headers.cookie.GenSpec())
+		if aSec.headers.cookie != nil {
+			sendf("h3=%s", aSec.headers.cookie.GenSpec())
 		}
 
-		if device.headers.transport != nil {
-			sendf("h4=%s", device.headers.transport.GenSpec())
+		if aSec.headers.transport != nil {
+			sendf("h4=%s", aSec.headers.transport.GenSpec())
 		}
 
-		for i, ipacket := range device.ipackets {
+		for i, ipacket := range aSec.ipackets {
 			if ipacket != nil {
 				sendf("i%d=%s", i+1, ipacket.Spec)
 			}
@@ -327,11 +329,14 @@ func (device *Device) handleDeviceLine(ipcDev *ipcSetDevice, key, value string) 
 		if jc <= 0 {
 			return ipcErrorf(ipc.IpcErrorInvalid, "jc must be a positive value")
 		}
-		if err := validateJunkParams(jc, device.junk.min, device.junk.max); err != nil {
+		aSec := device.advancedSecuritySnapshot()
+		if err := validateJunkParams(jc, aSec.junk.min, aSec.junk.max); err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "invalid junk settings: %w", err)
 		}
 		device.log.Verbosef("UAPI: Updating junk count")
+		device.aSecMu.Lock()
 		device.junk.count = jc
+		device.aSecMu.Unlock()
 
 	case "jmin":
 		jmin, err := strconv.Atoi(value)
@@ -341,11 +346,14 @@ func (device *Device) handleDeviceLine(ipcDev *ipcSetDevice, key, value string) 
 		if jmin <= 0 {
 			return ipcErrorf(ipc.IpcErrorInvalid, "jmin must be a positive value")
 		}
-		if err := validateJunkParams(device.junk.count, jmin, device.junk.max); err != nil {
+		aSec := device.advancedSecuritySnapshot()
+		if err := validateJunkParams(aSec.junk.count, jmin, aSec.junk.max); err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "invalid junk settings: %w", err)
 		}
 		device.log.Verbosef("UAPI: Updating junk min")
+		device.aSecMu.Lock()
 		device.junk.min = jmin
+		device.aSecMu.Unlock()
 
 	case "jmax":
 		jmax, err := strconv.Atoi(value)
@@ -355,11 +363,14 @@ func (device *Device) handleDeviceLine(ipcDev *ipcSetDevice, key, value string) 
 		if jmax <= 0 {
 			return ipcErrorf(ipc.IpcErrorInvalid, "jmax must be a positive value")
 		}
-		if err := validateJunkParams(device.junk.count, device.junk.min, jmax); err != nil {
+		aSec := device.advancedSecuritySnapshot()
+		if err := validateJunkParams(aSec.junk.count, aSec.junk.min, jmax); err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "invalid junk settings: %w", err)
 		}
 		device.log.Verbosef("UAPI: Updating junk max")
+		device.aSecMu.Lock()
 		device.junk.max = jmax
+		device.aSecMu.Unlock()
 
 	case "s1":
 		padding, err := strconv.Atoi(value)
@@ -370,7 +381,9 @@ func (device *Device) handleDeviceLine(ipcDev *ipcSetDevice, key, value string) 
 			return ipcErrorf(ipc.IpcErrorInvalid, "s1 must be non-negative")
 		}
 		device.log.Verbosef("UAPI: Updating s1 padding")
+		device.aSecMu.Lock()
 		device.paddings.init = padding
+		device.aSecMu.Unlock()
 
 	case "s2":
 		padding, err := strconv.Atoi(value)
@@ -381,7 +394,9 @@ func (device *Device) handleDeviceLine(ipcDev *ipcSetDevice, key, value string) 
 			return ipcErrorf(ipc.IpcErrorInvalid, "s2 must be non-negative")
 		}
 		device.log.Verbosef("UAPI: Updating s2 padding")
+		device.aSecMu.Lock()
 		device.paddings.response = padding
+		device.aSecMu.Unlock()
 
 	case "s3":
 		padding, err := strconv.Atoi(value)
@@ -392,7 +407,9 @@ func (device *Device) handleDeviceLine(ipcDev *ipcSetDevice, key, value string) 
 			return ipcErrorf(ipc.IpcErrorInvalid, "s3 must be non-negative")
 		}
 		device.log.Verbosef("UAPI: Updating s3 padding")
+		device.aSecMu.Lock()
 		device.paddings.cookie = padding
+		device.aSecMu.Unlock()
 
 	case "s4":
 		padding, err := strconv.Atoi(value)
@@ -403,7 +420,9 @@ func (device *Device) handleDeviceLine(ipcDev *ipcSetDevice, key, value string) 
 			return ipcErrorf(ipc.IpcErrorInvalid, "s4 must be non-negative")
 		}
 		device.log.Verbosef("UAPI: Updating s4 padding")
+		device.aSecMu.Lock()
 		device.paddings.transport = padding
+		device.aSecMu.Unlock()
 
 	case "h1":
 		header, err := newMagicHeader(value)
@@ -438,35 +457,45 @@ func (device *Device) handleDeviceLine(ipcDev *ipcSetDevice, key, value string) 
 		if err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to parse I1: %w", err)
 		}
+		device.aSecMu.Lock()
 		device.ipackets[0] = chain
+		device.aSecMu.Unlock()
 
 	case "i2":
 		chain, err := newObfChain(value)
 		if err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to parse I2: %w", err)
 		}
+		device.aSecMu.Lock()
 		device.ipackets[1] = chain
+		device.aSecMu.Unlock()
 
 	case "i3":
 		chain, err := newObfChain(value)
 		if err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to parse I3: %w", err)
 		}
+		device.aSecMu.Lock()
 		device.ipackets[2] = chain
+		device.aSecMu.Unlock()
 
 	case "i4":
 		chain, err := newObfChain(value)
 		if err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to parse I4: %w", err)
 		}
+		device.aSecMu.Lock()
 		device.ipackets[3] = chain
+		device.aSecMu.Unlock()
 
 	case "i5":
 		chain, err := newObfChain(value)
 		if err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to parse I5: %w", err)
 		}
+		device.aSecMu.Lock()
 		device.ipackets[4] = chain
+		device.aSecMu.Unlock()
 
 	default:
 		return ipcErrorf(ipc.IpcErrorInvalid, "invalid UAPI device key: %v", key)
@@ -727,6 +756,7 @@ type ipcSetDevice struct {
 }
 
 func (d *ipcSetDevice) mergeWithDevice(device *Device) error {
+	device.aSecMu.RLock()
 	if d.headers.init == nil {
 		d.headers.init = device.headers.init
 	}
@@ -742,6 +772,7 @@ func (d *ipcSetDevice) mergeWithDevice(device *Device) error {
 	if d.headers.transport == nil {
 		d.headers.transport = device.headers.transport
 	}
+	device.aSecMu.RUnlock()
 
 	headers := []*magicHeader{d.headers.init, d.headers.response, d.headers.cookie, d.headers.transport}
 	for i := 0; i < len(headers); i++ {
@@ -755,10 +786,12 @@ func (d *ipcSetDevice) mergeWithDevice(device *Device) error {
 		}
 	}
 
+	device.aSecMu.Lock()
 	device.headers.init = d.headers.init
 	device.headers.response = d.headers.response
 	device.headers.cookie = d.headers.cookie
 	device.headers.transport = d.headers.transport
+	device.aSecMu.Unlock()
 
 	return nil
 }

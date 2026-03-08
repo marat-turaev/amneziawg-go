@@ -87,29 +87,40 @@ type Device struct {
 	}
 
 	ipcMutex sync.RWMutex
+	aSecMu   sync.RWMutex
 	closed   chan struct{}
 	log      *Logger
 
-	junk struct {
-		min   int
-		max   int
-		count int
-	}
+	junk     junkSettings
+	headers  headerSettings
+	paddings paddingSettings
+	ipackets [5]*obfChain
+}
 
-	headers struct {
-		init      *magicHeader
-		cookie    *magicHeader
-		response  *magicHeader
-		transport *magicHeader
-	}
+type junkSettings struct {
+	min   int
+	max   int
+	count int
+}
 
-	paddings struct {
-		init      int
-		response  int
-		cookie    int
-		transport int
-	}
+type headerSettings struct {
+	init      *magicHeader
+	cookie    *magicHeader
+	response  *magicHeader
+	transport *magicHeader
+}
 
+type paddingSettings struct {
+	init      int
+	response  int
+	cookie    int
+	transport int
+}
+
+type advancedSecuritySettings struct {
+	junk     junkSettings
+	headers  headerSettings
+	paddings paddingSettings
 	ipackets [5]*obfChain
 }
 
@@ -145,6 +156,18 @@ func (device *Device) isClosed() bool {
 // See device.state.state comments for how to interpret this value.
 func (device *Device) isUp() bool {
 	return device.deviceState() == deviceStateUp
+}
+
+func (device *Device) advancedSecuritySnapshot() advancedSecuritySettings {
+	device.aSecMu.RLock()
+	defer device.aSecMu.RUnlock()
+
+	return advancedSecuritySettings{
+		junk:     device.junk,
+		headers:  device.headers,
+		paddings: device.paddings,
+		ipackets: device.ipackets,
+	}
 }
 
 // Must hold device.peers.Lock()
@@ -321,10 +344,12 @@ func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 	device.rate.limiter.Init()
 	device.indexTable.Init()
 
+	device.aSecMu.Lock()
 	device.headers.init = &magicHeader{start: MessageInitiationType, end: MessageInitiationType}
 	device.headers.response = &magicHeader{start: MessageResponseType, end: MessageResponseType}
 	device.headers.cookie = &magicHeader{start: MessageCookieReplyType, end: MessageCookieReplyType}
 	device.headers.transport = &magicHeader{start: MessageTransportType, end: MessageTransportType}
+	device.aSecMu.Unlock()
 
 	device.PopulatePools()
 

@@ -126,8 +126,9 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 	}
 
 	var sendBuffer [][]byte
+	aSec := peer.device.advancedSecuritySnapshot()
 
-	for _, ipacket := range peer.device.ipackets {
+	for _, ipacket := range aSec.ipackets {
 		if ipacket != nil {
 			buf := make([]byte, ipacket.ObfuscatedLen(0))
 			ipacket.Obfuscate(buf, nil)
@@ -135,9 +136,9 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 		}
 	}
 
-	jc := peer.device.junk.count
-	jmin := peer.device.junk.min
-	jmax := peer.device.junk.max
+	jc := aSec.junk.count
+	jmin := aSec.junk.min
+	jmax := aSec.junk.max
 	if jc > 0 && jmax < jmin {
 		return errors.New("invalid junk settings: jmax is less than jmin")
 	}
@@ -163,7 +164,7 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 	peer.timersAnyAuthenticatedPacketTraversal()
 	peer.timersAnyAuthenticatedPacketSent()
 
-	if padding := peer.device.paddings.init; padding > 0 {
+	if padding := aSec.paddings.init; padding > 0 {
 		buf := make([]byte, padding+len(packet))
 		if _, err := rand.Read(buf[:padding]); err != nil {
 			return err
@@ -231,7 +232,8 @@ func (device *Device) SendHandshakeCookie(initiatingElem *QueueHandshakeElement)
 	device.log.Verbosef("Sending cookie response for denied handshake message for %v", initiatingElem.endpoint.DstToString())
 
 	sender := binary.LittleEndian.Uint32(initiatingElem.packet[4:8])
-	msgType := device.headers.cookie.Generate()
+	aSec := device.advancedSecuritySnapshot()
+	msgType := aSec.headers.cookie.Generate()
 
 	reply, err := device.cookieChecker.CreateReply(
 		initiatingElem.packet,
@@ -246,7 +248,7 @@ func (device *Device) SendHandshakeCookie(initiatingElem *QueueHandshakeElement)
 
 	packet := make([]byte, MessageCookieReplySize)
 	_ = reply.marshal(packet)
-	if padding := device.paddings.cookie; padding > 0 {
+	if padding := aSec.paddings.cookie; padding > 0 {
 		buf := make([]byte, padding+len(packet))
 		if _, err := rand.Read(buf[:padding]); err != nil {
 			return err
@@ -512,6 +514,7 @@ func (device *Device) RoutineEncryption(id int) {
 	device.log.Verbosef("Routine: encryption worker %d - started", id)
 
 	for elemsContainer := range device.queue.encryption.c {
+		aSec := device.advancedSecuritySnapshot()
 		for _, elem := range elemsContainer.elems {
 			// populate header fields
 			header := elem.buffer[:MessageTransportHeaderSize]
@@ -520,7 +523,7 @@ func (device *Device) RoutineEncryption(id int) {
 			fieldReceiver := header[4:8]
 			fieldNonce := header[8:16]
 
-			msgType := device.headers.transport.Generate()
+			msgType := aSec.headers.transport.Generate()
 
 			binary.LittleEndian.PutUint32(fieldType, msgType)
 			binary.LittleEndian.PutUint32(fieldReceiver, elem.keypair.remoteIndex)
@@ -559,6 +562,7 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 		if elemsContainer == nil {
 			return
 		}
+		aSec := device.advancedSecuritySnapshot()
 		if !peer.isRunning.Load() {
 			// peer has been stopped; return re-usable elems to the shared pool.
 			// This is an optimization only. It is possible for the peer to be stopped
@@ -580,7 +584,7 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 			if len(elem.packet) != MessageKeepaliveSize {
 				dataSent = true
 
-				if padding := device.paddings.transport; padding > 0 {
+				if padding := aSec.paddings.transport; padding > 0 {
 					// elem.packet is stored at the start of elem.buffer
 					// with zero padding
 					for i := len(elem.packet) - 1; i >= 0; i-- {
