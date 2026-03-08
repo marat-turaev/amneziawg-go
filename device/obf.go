@@ -42,7 +42,13 @@ func newObfChain(spec string) (*obfChain, error) {
 	for {
 		start := strings.IndexByte(remaining, '<')
 		if start == -1 {
+			if strings.TrimSpace(remaining) != "" {
+				errs = append(errs, fmt.Errorf("unexpected text outside tags: %q", strings.TrimSpace(remaining)))
+			}
 			break
+		}
+		if strings.TrimSpace(remaining[:start]) != "" {
+			errs = append(errs, fmt.Errorf("unexpected text outside tags: %q", strings.TrimSpace(remaining[:start])))
 		}
 
 		end := strings.IndexByte(remaining[start:], '>')
@@ -85,6 +91,9 @@ func newObfChain(spec string) (*obfChain, error) {
 
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
+	}
+	if len(obfs) == 0 {
+		return nil, errors.New("empty obfuscation chain")
 	}
 
 	return &obfChain{
