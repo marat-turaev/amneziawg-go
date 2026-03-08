@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -478,6 +479,47 @@ func BenchmarkUAPIGet(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		pair[0].dev.IpcGetOperation(io.Discard)
+	}
+}
+
+func TestIpcSetKeepsAmneziaSettingsAtomicOnError(t *testing.T) {
+	device := Device{}
+	device.log = NewLogger(LogLevelSilent, "")
+	device.peers.keyMap = make(map[NoisePublicKey]*Peer)
+	device.headers.init = &magicHeader{start: MessageInitiationType, end: MessageInitiationType}
+	device.headers.response = &magicHeader{start: MessageResponseType, end: MessageResponseType}
+	device.headers.cookie = &magicHeader{start: MessageCookieReplyType, end: MessageCookieReplyType}
+	device.headers.transport = &magicHeader{start: MessageTransportType, end: MessageTransportType}
+
+	err := device.IpcSet(strings.Join([]string{
+		"jc=5",
+		"jmin=10",
+		"jmax=20",
+		"s1=15",
+		"i1=<b 0xf6ab3267fa>",
+		"h1=100-101",
+		"h2=101-102",
+		"",
+	}, "\n"))
+	if err == nil {
+		t.Fatal("expected overlapping headers to fail")
+	}
+
+	aSec := device.advancedSecuritySnapshot()
+	if aSec.junk != (junkSettings{}) {
+		t.Fatalf("junk settings changed on failed apply: %+v", aSec.junk)
+	}
+	if aSec.paddings != (paddingSettings{}) {
+		t.Fatalf("padding settings changed on failed apply: %+v", aSec.paddings)
+	}
+	if aSec.ipackets[0] != nil {
+		t.Fatalf("ipacket changed on failed apply: %+v", aSec.ipackets[0])
+	}
+	if !aSec.headers.init.Validate(MessageInitiationType) || aSec.headers.init.start != MessageInitiationType || aSec.headers.init.end != MessageInitiationType {
+		t.Fatalf("init header changed on failed apply: %+v", aSec.headers.init)
+	}
+	if !aSec.headers.response.Validate(MessageResponseType) || aSec.headers.response.start != MessageResponseType || aSec.headers.response.end != MessageResponseType {
+		t.Fatalf("response header changed on failed apply: %+v", aSec.headers.response)
 	}
 }
 
